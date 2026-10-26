@@ -73,6 +73,8 @@ represent a secp256k1 signature over `keccak256(SET_CODE_TX_TYPE || rlp([chain_i
 
 The `authorization_list` is a list of tuples that indicate what code the signer of each tuple (signer is called an “authorizer”) desires to execute in the context of their EOA.  A single set-code transaction can therefore be used to set or modify code for multiple EOAs. Each EOA’s authorization is a tuple in the list. While each EOA must sign its own authorization, they need not send their set-code transaction themselves. The owner of an EOA can send their own set code transaction - if they wish. A set-code transaction is invalid if the length of `authorization_list` is zero. 
 
+Each tuple MUST be an RLP list of exactly six elements; otherwise the set-code transaction is invalid.
+
 The set-code transaction is also considered invalid when any field in an authorization tuple cannot fit within the following bounds:
 
 ```
