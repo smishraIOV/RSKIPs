@@ -223,6 +223,7 @@ control over a signer’s EOA*.
 - Transaction (gas) sponsors may require their users to post some bond or use reputational mechanisms. This is to guard against the possibility of relayers not being reimbursed for gas due to change in a EOA’s authorized code or asset sweeping.
 - Transaction propagation: An EOA’s nonce may be incremented more than once per transaction.
 - Transaction propagation:  once an EOA has delegated to code, that code can be called by anyone. It becomes possible to cause transactions from other accounts to become stale. See [Transaction origination](#transaction-origination) for the resulting transaction pool policy.
+- Peg-outs from delegated code: the Bridge treats any call to it from executing code as a contract caller (RSKIP-185): the peg-out is rejected and the value is not refunded. This applies to a delegated account's own code, including when the account calls itself. A delegated account must send a peg-out as a transaction with the Bridge as `destination`. Wallets SHOULD NOT send peg-outs through delegated code.
 
 ## Backward compatibility
 
@@ -235,6 +236,7 @@ As in Ethereum, this change breaks several invariants that applications and tool
 - `tx.origin == msg.sender` can now hold in a nested call frame through self-sponsoring, which breaks guards of the form `require(tx.origin == msg.sender)`.
 - An EOA can hold persistent storage (see step 7 of [Behavior](#behavior)).
 - Delegated EOAs carry code. Un-upgraded tooling will see `EXTCODESIZE` return `23` and `EXTCODEHASH` return `keccak256(0xef0100 || address)` for accounts that previously looked like plain EOAs, and tooling that treats any account with code as a contract will classify them as contracts.
+- A peg-out sent through delegated code is rejected without a refund, even when the delegated account calls itself (see [Security](#security)).
 
 ## Implementation
 
