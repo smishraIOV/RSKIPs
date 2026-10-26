@@ -222,7 +222,7 @@ control over a signer’s EOA*.
 - Breaks in atomic sandwich protections which rely on `tx.origin` and reentrancy guards of the style `require(tx.origin == msg.sender)`
 - Transaction (gas) sponsors may require their users to post some bond or use reputational mechanisms. This is to guard against the possibility of relayers not being reimbursed for gas due to change in a EOA’s authorized code or asset sweeping.
 - Transaction propagation: An EOA’s nonce may be incremented more than once per transaction.
-- Transaction propagation:  once an EOA has delegated to code, that code can be called by anyone. It becomes possible to cause transactions from other accounts to become stale. The authors of EIP-7702 recommend that clients do not accept more than one pending transaction from any EOA with a non-zero delegation indicator.
+- Transaction propagation:  once an EOA has delegated to code, that code can be called by anyone. It becomes possible to cause transactions from other accounts to become stale. See [Transaction origination](#transaction-origination) for the resulting transaction pool policy.
 
 ## Backward compatibility
 
@@ -231,7 +231,7 @@ This change is a hard fork and therefore all full nodes must be updated. Light c
 As in Ethereum, this change breaks several invariants that applications and tooling may rely on. On Rootstock they apply as follows:
 
 - An account's balance can decrease as a result of a call made by anyone, not only through a transaction the account itself signed, because delegated code runs in the account's context.
-- An EOA's nonce can increase during execution, since delegated code can execute `CREATE`, and it can increase more than once in a single transaction, through authorization processing (step 8 of [Behavior](#behavior)). Nodes therefore SHOULD accept at most one pending transaction from a delegated account (see [Transaction origination](#transaction-origination)).
+- An EOA's nonce can increase during execution, since delegated code can execute `CREATE`, and it can increase more than once in a single transaction, through authorization processing (step 8 of [Behavior](#behavior)). This affects pending transactions (see [Transaction origination](#transaction-origination)).
 - `tx.origin == msg.sender` can now hold in a nested call frame through self-sponsoring, which breaks guards of the form `require(tx.origin == msg.sender)`.
 - An EOA can hold persistent storage (see step 7 of [Behavior](#behavior)).
 - Delegated EOAs carry code. Un-upgraded tooling will see `EXTCODESIZE` return `23` and `EXTCODEHASH` return `keccak256(0xef0100 || address)` for accounts that previously looked like plain EOAs, and tooling that treats any account with code as a contract will classify them as contracts.
