@@ -101,6 +101,7 @@ For each `[chain_id, address, nonce, y_parity, r, s]` tuple, perform the
 following:
 
 1. Verify the chain ID is 0 or the ID of the current chain (which for Rootstock can be 30, 31 or 33).
+    - A chain ID of 0 makes the authorization valid on every chain that implements EIP-7702 or this RSKIP, including Rootstock. Following EIP-7702, the chain ID can be set to reduce the scope of the authorization; when universal deployment is preferred, it is set to 0 (see [Security](#security)).
 2. Verify the nonce is less than `2**64 - 1`.
 3. Let `authority = ecrecover(msg, y_parity, r, s)`.
     - Where `msg = keccak(MAGIC || rlp([chain_id, address, nonce]))` and  `MAGIC` is defined above in parameters.
@@ -223,6 +224,7 @@ control over a signer’s EOA*.
 - Transaction (gas) sponsors may require their users to post some bond or use reputational mechanisms. This is to guard against the possibility of relayers not being reimbursed for gas due to change in a EOA’s authorized code or asset sweeping.
 - Transaction propagation: An EOA’s nonce may be incremented more than once per transaction.
 - Transaction propagation:  once an EOA has delegated to code, that code can be called by anyone. It becomes possible to cause transactions from other accounts to become stale. See [Transaction origination](#transaction-origination) for the resulting transaction pool policy.
+- Cross-chain replay of authorizations: as EIP-7702 notes, one consideration when signing a code pointer is what code that address points to on another chain. An authorization with chain ID 0 is valid on every chain, so one signed for Ethereum or another chain, for example through phishing, can be replayed on Rootstock once the `authority`'s nonce on Rootstock equals the tuple's `nonce`. For an account never used on Rootstock, that nonce is 0. The account is then delegated to whatever code is at `address` on Rootstock, which need not be the code the user reviewed. Wallets SHOULD sign authorizations with the chain ID of the intended network, and use chain ID 0 only when the user intends the delegation to apply on every chain.
 - Peg-outs from delegated code: the Bridge treats any call to it from executing code as a contract caller (RSKIP-185): the peg-out is rejected and the value is not refunded. This applies to a delegated account's own code, including when the account calls itself. A delegated account must send a peg-out as a transaction with the Bridge as `destination`. Wallets SHOULD NOT send peg-outs through delegated code.
 
 ## Backward compatibility
