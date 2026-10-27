@@ -213,7 +213,10 @@ This RSKIP MUST NOT activate before RSKIP-543, RSKIP-546, RSKIP-692 and RSKIP-70
 The original EIP has [extensive rationale](https://eips.ethereum.org/EIPS/eip-7702#rationale) section with detailed discussion of several aspects such as no initcode, no contract creation, no precompiles, etc. For the sake of brevity, we do not replicate them here. However, reviewers and implementers should pay particular attention to the issues mentioned therein. One example is the transaction origin invariant.  Allowing `tx.origin` to set code and execute its own delegated code enables what is called self-sponsoring. It allows users to take advantage of EIP-7702 without relying on any third party infrastructure. However, that means the EIP breaks the invariant that `msg.sender == tx.origin`
 only happens in the topmost execution frame of a transaction. This will affect smart contracts containing `require(msg.sender == tx.origin)` style checks.
 
-RSKIP-692 must be active at or before this RSKIP. Without it, a set-code transaction whose `destination` is a failing precompiled contract reports success and is charged its full gas limit without the refunds of step 6 of [Behavior](#behavior), contrary to the [Behavior](#behavior) rule that these refunds still apply when execution fails.
+RSKIP-692 must be active at or before this RSKIP. Without it, a set-code transaction whose `destination` is a failing precompiled contract does not end in an exceptional halt, and:
+
+- The fee and the receipt disagree. The receipt reports success and a gas used that covers only the intrinsic gas and the cost the precompiled contract declares, while the sender is charged the full gas limit. The gas used of the block is under-reported by the same amount.
+- The refunds of step 6 of [Behavior](#behavior) are not applied, contrary to the rule that these refunds still apply when execution fails.
 
 Reviewers and implementers should pay attention to the discussion on [security considerations](https://eips.ethereum.org/EIPS/eip-7702#security-considerations)  in the  EIP, some of which are listed below.
 
