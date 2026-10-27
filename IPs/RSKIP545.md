@@ -30,6 +30,7 @@ EIP-7702 has several prerequisites that have not been implemented in Rootstock. 
 
 * [RSKIP-543](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP543.md), which introduces [EIP-2718](https://eips.ethereum.org/EIPS/eip-2718) style typed transactions.
 * [RSKIP-546](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP546.md), which introduces Ethereum's Type 1 and Type 2 transaction formats. The set-code transaction reuses their fields (`access_list`, `max_fee_per_gas` and `max_priority_fee_per_gas`) and the rules that apply to them.
+* [RSKIP-692](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP692.md), which makes a transaction to a failing precompiled contract end in an exceptional halt (see [Rationale](#rationale)).
 * [RSKIP-701](https://github.com/rsksmart/RSKIPs/pull/701), which specifies `SELFDESTRUCT` for delegated accounts. Without it, a delegated account that executes `SELFDESTRUCT` would be deleted and lose its nonce, so the authorizations it has signed could be replayed.
 
 ### Parameters
@@ -205,12 +206,14 @@ In case a delegation indicator points to another delegation, creating a potentia
 
 This RSKIP is proposed for the Cardamom network upgrade ([RSKIP-694](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP694.md)). Activation block heights are TBD.
 
-This RSKIP MUST NOT activate before RSKIP-543, RSKIP-546 and RSKIP-701. Set-code transactions are valid only when all of them and this RSKIP are active; before that, nodes MUST reject them.
+This RSKIP MUST NOT activate before RSKIP-543, RSKIP-546, RSKIP-692 and RSKIP-701. Each of them MUST be active at or before the activation of this RSKIP, never after. Set-code transactions are valid only when all of them and this RSKIP are active; before that, nodes MUST reject them.
 
 ## Rationale
 
 The original EIP has [extensive rationale](https://eips.ethereum.org/EIPS/eip-7702#rationale) section with detailed discussion of several aspects such as no initcode, no contract creation, no precompiles, etc. For the sake of brevity, we do not replicate them here. However, reviewers and implementers should pay particular attention to the issues mentioned therein. One example is the transaction origin invariant.  Allowing `tx.origin` to set code and execute its own delegated code enables what is called self-sponsoring. It allows users to take advantage of EIP-7702 without relying on any third party infrastructure. However, that means the EIP breaks the invariant that `msg.sender == tx.origin`
 only happens in the topmost execution frame of a transaction. This will affect smart contracts containing `require(msg.sender == tx.origin)` style checks.
+
+RSKIP-692 must be active at or before this RSKIP. Without it, a set-code transaction whose `destination` is a failing precompiled contract reports success and is charged its full gas limit without the refunds of step 6 of [Behavior](#behavior), contrary to the [Behavior](#behavior) rule that these refunds still apply when execution fails.
 
 Reviewers and implementers should pay attention to the discussion on [security considerations](https://eips.ethereum.org/EIPS/eip-7702#security-considerations)  in the  EIP, some of which are listed below.
 
