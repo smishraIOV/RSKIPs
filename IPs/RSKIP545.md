@@ -26,7 +26,7 @@ The specification is intended to mirror that of [EIP-7702](https://eips.ethereum
 
 ### Prerequisites
 
-EIP-7702 has several prerequisites that have not been implemented in Rootstock. Some of them are not strictly necessary for this RSKIP. For example, we do not necessarily require EIP-2929, EIP-2930, EIP-3607, or EIP-4844. This RSKIP requires:
+EIP-7702 has several prerequisites that have not been implemented in Rootstock. Some of them are not strictly necessary for this RSKIP. For example, we do not necessarily require EIP-2929, EIP-2930, EIP-3607, or EIP-4844. EIP-3541, which the delegation indicator relies on, is already active: [RSKIP-544](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP544.md) adopted it in the Vetiver network upgrade (mainnet block 8,804,200). This RSKIP requires:
 
 * [RSKIP-543](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP543.md), which introduces [EIP-2718](https://eips.ethereum.org/EIPS/eip-2718) style typed transactions.
 * [RSKIP-546](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP546.md), which introduces Ethereum's Type 1 and Type 2 transaction formats. The set-code transaction reuses their fields (`access_list`, `max_fee_per_gas` and `max_priority_fee_per_gas`) and the rules that apply to them.
@@ -115,9 +115,9 @@ following:
 counter if the code of `authority` is not empty, which by step 4 means `authority` is already a delegated account.
     - This differs from EIP-7702, where the refund applies whenever `authority` exists in the state. On Rootstock, an `authority` that has a balance or a nonce but no code receives no refund.
 7. Set the code of `authority` to be `0xef0100 || address`. This is a delegation
-indicator. Also set the delegation authority flag of `authority` (see *delegation indicator* below).
-    - If `address` is `0x0000000000000000000000000000000000000000`, do not write the delegation indicator or set the flag. Clear the account’s code by removing the value at its code key from the Unitrie. Afterwards `EXTCODEHASH` on the account returns the empty code hash `0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470` (`keccak256` of the empty string), as for an account that never had code.
-    - In the Unitrie, writing the delegation indicator stores it as the value at the account's code key, and also writes the value `0x01` at the account's storage prefix key if it is not already present, as for a contract. Neither step touches any storage cell.
+indicator. Also set the delegation authority flag of `authority` (see *delegation indicator* and *authority flag* below).
+    - If `address` is `0x0000000000000000000000000000000000000000`, do not write the delegation indicator or set the flag. Clear the account’s code by removing the value at its code key from the Unitrie. The storage initialization entry and the delegation authority flag are left in place. Afterwards `EXTCODEHASH` on the account returns the empty code hash `0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470` (`keccak256` of the empty string), as for an account that never had code.
+    - In the Unitrie, writing the delegation indicator stores it as the value at the account's code key, and also writes the value `0x01` at the account's storage prefix key, as for a contract. This is the account's *storage initialization entry*. With the key mapping of [RSKIP-108](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP108.md), the account key is `0x00 || keccak256(authority)[0:10] || authority`, the code key is the account key followed by `0x80`, and the storage prefix key is the account key followed by `0x00`. Neither step touches any storage cell.
     - A set-code transaction can therefore set a delegation on an EOA, change it to point to a different address, or clear it. These operations change only the account's code (and, when setting a delegation, its delegation authority flag). They never read, write or clear any storage cell of the account.
     - Clearing a delegation therefore does not return the account to its state before it was delegated: storage written while it was delegated remains, and the delegation authority flag stays set. A later delegation runs its code against that storage. As a result, an EOA can now hold persistent storage that no protocol operation clears, and any application logic that assumes an EOA has no storage must account for this. As with a proxy contract, the storage can only be cleared by code running in the account's context: for example, by delegating to a contract that writes zero to the slots in use and then calling the account. `SELFDESTRUCT` does not clear it: under RSKIP-701, a delegated account that executes `SELFDESTRUCT` keeps its storage.
 8. Increase the nonce of `authority` by one.
@@ -132,7 +132,7 @@ Delegation indicators use the undefined EVM opcode `0xEF` from  [EIP-3541](https
 
 #### Delegation authority flag
 
-A contract deployed before Vetiver may have code that is exactly a delegation indicator, so the presence of a delegation indicator in an account's code is not enough to recognize a delegation. Each account therefore has a **delegation authority flag**. Step 7 of [Behavior](#behavior) sets the flag whenever it writes a delegation indicator, and nothing clears it, including clearing the delegation. The flag is bit 1 (value `2`) of the account's state flags. An account's state is encoded as `rlp([nonce, balance])` when its state flags are zero and `rlp([nonce, balance, stateFlags])` otherwise; bit 0 (value `1`) is the existing hibernation flag.
+Each account has a **delegation authority flag** (see [Rationale](#rationale) for why it is needed). Step 7 of [Behavior](#behavior) sets the flag whenever it writes a delegation indicator. Nothing else sets or clears it, and clearing a delegation leaves it set. The flag is bit 1 (value `2`) of the account's state flags. The value at the account key is `rlp([nonce, balance])` when the state flags are zero and `rlp([nonce, balance, stateFlags])` otherwise, with `stateFlags` encoded as an RLP integer; bit 0 (value `1`) is the existing hibernation flag. For example, an account that carries only the delegation authority flag has `stateFlags` encoded as the single byte `0x02`. Setting the flag on an account that does not carry it changes the account's encoding, and therefore the state root, as the storage initialization entry does.
 
 A **delegated account** is an account that carries the delegation authority flag and whose code is exactly the 23-byte delegation indicator `0xef0100 || address`. Only the delegation of a delegated account is followed. An account whose code is a delegation indicator but that does not carry the flag, such as a contract deployed before Vetiver, is not a delegated account, and its code is executed as is.
 
@@ -218,9 +218,10 @@ RSKIP-692 must be active at or before this RSKIP. Without it, a set-code transac
 - The fee and the receipt disagree. The receipt reports success and a gas used that covers only the intrinsic gas and the cost the precompiled contract declares, while the sender is charged the full gas limit. The gas used of the block is under-reported by the same amount.
 - The refunds of step 6 of [Behavior](#behavior) are not applied, contrary to the rule that these refunds still apply when execution fails.
 
-Reviewers and implementers should pay attention to the discussion on [security considerations](https://eips.ethereum.org/EIPS/eip-7702#security-considerations)  in the  EIP, some of which are listed below.
+A delegation authority flag is needed on top of the code prefix because of contracts deployed before Vetiver. EIP-7702 recognizes a delegation from the code prefix alone, which is safe on Ethereum because EIP-3541 has prevented contracts whose code starts with `0xEF` since the London upgrade. On Rootstock, EIP-3541 was adopted by [RSKIP-544](https://github.com/rsksmart/RSKIPs/blob/master/IPs/RSKIP544.md) only at Vetiver (mainnet block 8,804,200), so a contract deployed earlier can have code that is exactly a delegation indicator. The flag tells a real authority from such a contract.
 
 ## Security
+Reviewers and implementers should pay attention to the discussion on [security considerations](https://eips.ethereum.org/EIPS/eip-7702#security-considerations)  in the  EIP, some of which are listed below.
 
 - A poorly implemented delegate can *allow a malicious actor to take near complete
 control over a signer’s EOA*.
