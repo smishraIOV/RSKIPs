@@ -121,7 +121,7 @@ EIP-2718 specifies the following for receipts. The receipt root in the block hea
 Compared with `LegacyReceipt`, this typed receipt payload omits two fields:
 
 * `postTxState`: in Rootstock this field only signals success (`0x01`) or failure (empty), which `status` already carries.
-* `gasUsed`: the gas used by the transaction alone. It can be derived as the transaction's `cumulativeGas` minus that of the previous transaction in the block. If parallel transaction execution ([RSKIP-144](RSKIP144.md)) is activated, `cumulativeGas` accumulates per execution sublist, and the previous transaction is the one in the same sublist.
+* `gasUsed`: the gas used by the transaction alone. It can be derived as the transaction's `cumulativeGas` minus that of the previous transaction in the block, or minus `0` for the first transaction. If parallel transaction execution ([RSKIP-144](RSKIP144.md)) is activated, `cumulativeGas` accumulates per execution sublist, and the previous transaction is the one in the same sublist; the first transaction of each sublist uses `0`.
 
 ### Activation
 
