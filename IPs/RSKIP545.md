@@ -47,7 +47,7 @@ A new (EIP-2718 style) transaction known as the “set-code transaction” is in
 
 `MAGIC` is used to recover (`ecrecover` from signed message) the address of the EOA (an *authorizer*) that authorizes  the change to set code into its own account. 
 
-A set-code transaction will attempt to set or modify code for a list of EOAs (called *authorizers*). `PER_EMPTY_ACCOUNT_COST`  is the up-front gas collected from the transaction sender for each EOA in the list. This is collected based on just the size of the list regardless of whether the code for an EOA is actually modified or not. `PER_AUTH_BASE_COST` is the cost of processing an authorization and setting the delegation. When an authorization succeeds and its EOA is already a delegated account, the difference `PER_EMPTY_ACCOUNT_COST - PER_AUTH_BASE_COST` is refunded to the sender (step 6 of [Behavior](#behavior)); otherwise the full up-front cost is kept. To account for gas schedule differences between Rootstock and Ethereum, the base cost in this RSKIP is a bit higher than the value in the EIP.
+A set-code transaction will attempt to set or modify code for a list of EOAs (called *authorizers*). `PER_EMPTY_ACCOUNT_COST`  is the up-front gas collected from the transaction sender for each EOA in the list. This is collected based on just the size of the list regardless of whether the code for an EOA is actually modified or not. `PER_AUTH_BASE_COST` is the cost of processing an authorization and setting the delegation. When an authorization succeeds and its EOA is not empty, the difference `PER_EMPTY_ACCOUNT_COST - PER_AUTH_BASE_COST` is refunded to the sender (step 6 of [Behavior](#behavior)); otherwise the full up-front cost is kept. To account for gas schedule differences between Rootstock and Ethereum, the base cost in this RSKIP is a bit higher than the value in the EIP.
 
 ### Set-code transaction
 
@@ -111,9 +111,7 @@ following:
 4. Verify the code of `authority` is empty or `authority` is a delegated account (see *delegation indicator* below).
 5. Verify the nonce of `authority` is equal to `nonce`.
     - This uses the current nonce of `authority`. When `authority` is the transaction sender (self-sponsoring), the sender's nonce has already been incremented for the transaction, so the tuple's `nonce` must be the transaction's nonce plus one.
-6. Add `PER_EMPTY_ACCOUNT_COST - PER_AUTH_BASE_COST` gas to the global refund
-counter if the code of `authority` is not empty, which by step 4 means `authority` is already a delegated account.
-    - This differs from EIP-7702, where the refund applies whenever `authority` exists in the state. On Rootstock, an `authority` that has a balance or a nonce but no code receives no refund.
+6. Add `PER_EMPTY_ACCOUNT_COST - PER_AUTH_BASE_COST` gas to the global refund counter if `authority` is not empty. Here, "empty" has the meaning of EIP-161: an account is empty if it has zero nonce, zero balance and no code.
 7. Set the code of `authority` to be `0xef0100 || address`. This is a delegation
 indicator. Also set the delegation authority flag of `authority` (see *delegation indicator* and *authority flag* below).
     - If `address` is `0x0000000000000000000000000000000000000000`, do not write the delegation indicator or set the flag. Clear the account’s code by removing the value at its code key from the Unitrie. The storage initialization entry and the delegation authority flag are left in place. Afterwards `EXTCODEHASH` on the account returns the empty code hash `0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470` (`keccak256` of the empty string), as for an account that never had code.
@@ -182,7 +180,7 @@ The `PER_AUTH_BASE_COST` is the cost to process the authorization tuple and set 
 
 EIP-7702 rounds its total up to `PER_AUTH_BASE_COST = 12500` and sets `PER_EMPTY_ACCOUNT_COST = 25000`, twice that value. Rootstock's total differs mainly because Rootstock does not implement EIP-2929, under which the account is already warm when the values are stored. This RSKIP rounds the Rootstock total up to `PER_AUTH_BASE_COST = 15500` and keeps `PER_EMPTY_ACCOUNT_COST = 25000`, as in Ethereum. These values may be revised after benchmarking the implementation.
 
-The refund in step 6 of [Behavior](#behavior) is therefore `25000 - 15500 = 9500` gas per authorization whose `authority` is already a delegated account. It is added to the same refund counter as other refunds, such as those for `SSTORE` and `SELFDESTRUCT`, and the total refund is capped at half of the gas used by the transaction, as for any other refund. The refund actually received can therefore be less than `9500` per authorization.
+The refund in step 6 of [Behavior](#behavior) is therefore `25000 - 15500 = 9500` gas per authorization whose `authority` is not empty. It is added to the same refund counter as other refunds, such as those for `SSTORE` and `SELFDESTRUCT`, and the total refund is capped at half of the gas used by the transaction, as for any other refund. The refund actually received can therefore be less than `9500` per authorization.
 
 **Delegation resolution.** Following a delegation reads a second account, the delegate, in addition to the delegated account itself. In EIP-7702 this read is priced through EIP-2929 (`2600` gas cold, `100` warm). Rootstock does not implement EIP-2929, so the read is charged a flat `DELEGATION_RESOLUTION_COST = 700` gas, Rootstock's price for reading an account (as for `EXTCODESIZE`). The charge applies:
 
@@ -255,6 +253,7 @@ The implementation currently differs from this specification in the following po
 
 - **Recognizing a delegation.** The implementation sets and keeps the delegation authority flag as specified, but recognizes a delegation from the account's code alone: when following a delegation, in step 4 of [Behavior](#behavior), and when checking the sender of a set-code transaction. This specification requires the flag as well.
 - **Delegation resolution cost.** The implementation does not charge `DELEGATION_RESOLUTION_COST`.
+- **Authorization refund.** The implementation applies the refund of step 6 of [Behavior](#behavior) only when `authority` has code, so an `authority` with no code but a nonzero nonce or balance receives no refund. This specification refunds any `authority` that is not empty.
 - **RSKIP-701.** The implementation does not yet include RSKIP-701 or require it for activation, so `SELFDESTRUCT` in a delegated account deletes the account, including its nonce.
 
 ## Test cases
@@ -305,7 +304,8 @@ In these cases the sender is not an authority, the transaction's `destination` i
 | --- | --- |
 | Intrinsic gas with one tuple | `21000 + 25000 = 46000` |
 | Intrinsic gas with two tuples | `21000 + 2 * 25000 = 71000` |
-| One tuple; `authority` has no code (first delegation) | Gas used `46000` (no refund) |
+| One tuple; `authority` is empty: zero nonce, zero balance and no code | Gas used `46000` (no refund) |
+| One tuple; `authority` has no code but a nonzero nonce or balance (first delegation) | Gas used `46000 - 9500 = 36500` |
 | One tuple; `authority` is already a delegated account (re-delegation, or clearing with `address = 0x0`) | Gas used `46000 - 9500 = 36500` |
 | One tuple, gas limit `45999` | Transaction is invalid (gas limit below intrinsic gas) |
 | One tuple, gas limit `46000` | Transaction is valid |
